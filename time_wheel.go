@@ -24,10 +24,11 @@ type TimeWheel struct {
 
 // New 时间轮构造函数
 func New(interval time.Duration, size int, job Job) *TimeWheel {
-	// 理论上 task 增加了 自定义函数 HandleFun 可以不用执行 job 通用回调函数,
-	// 但为了避免 开发者 又通过添加普通任务的函数来添加任务,
+	// 理论上 task 增加了 自定义函数 HandleFun 可以不用指定 job 通用回调函数,
+	// 但为了避免开发者又通过添加普通任务的函数(tw#Add)来添加任务,
 	// 故, 这儿还是强制判断一下 job 非空
-	// -> 在添加任务的时候 如果 job 为 nil, 那么 task.HandleFun 就必须指定
+	// 换一种思路 ->
+	// -> 如果 允许 job 为空 -> 那么,在添加任务的时候, job 为 nil, task.HandleFun 就必须指定
 	if interval <= 0 || size <= 0 || job == nil {
 		return nil
 	}
