@@ -7,13 +7,15 @@ import (
 
 // Job 任务回调函数
 type Job func(any)
+
+// Handler Task 自定义事件回调函数
 type Handler func(any)
 
 type TimeWheel struct {
 	interval   time.Duration // 时间间隔
 	ticker     *time.Ticker
 	size       int          // 槽数量
-	slots      []*list.List // 轮槽
+	slots      []*list.List // 轮槽 [ [bucket], [bucket],..., [bucket] ]
 	timer      map[any]int  // 任务池, key:唯一标识 value: 槽 position
 	position   int
 	job        Job // Job 任务回调函数
@@ -120,8 +122,8 @@ func (tw *TimeWheel) start() {
 }
 
 func (tw *TimeWheel) tick() {
-	slot := tw.slots[tw.position]
-	tw.scan(slot)
+	bucket := tw.slots[tw.position]
+	tw.scan(bucket)
 	if tw.position == tw.size-1 {
 		tw.position = 0
 	} else {
@@ -141,12 +143,12 @@ func (tw *TimeWheel) add(task *Task) {
 
 func (tw *TimeWheel) remove(taskKey any) {
 	if position, ok := tw.timer[taskKey]; ok {
-		slot := tw.slots[position]
-		for element := slot.Front(); element != nil; {
+		bucket := tw.slots[position]
+		for element := bucket.Front(); element != nil; {
 			task := element.Value.(*Task)
 			if task.Key == taskKey {
 				delete(tw.timer, task.Key)
-				slot.Remove(element)
+				bucket.Remove(element)
 			}
 
 			element = element.Next()
@@ -154,8 +156,8 @@ func (tw *TimeWheel) remove(taskKey any) {
 	}
 }
 
-func (tw *TimeWheel) scan(slot *list.List) {
-	for element := slot.Front(); element != nil; {
+func (tw *TimeWheel) scan(bucket *list.List) {
+	for element := bucket.Front(); element != nil; {
 		task := element.Value.(*Task)
 		if task.round > 0 {
 			task.round--
@@ -175,7 +177,7 @@ func (tw *TimeWheel) scan(slot *list.List) {
 		}()
 
 		next := element.Next()
-		slot.Remove(element)
+		bucket.Remove(element)
 		if task.Key != nil {
 			delete(tw.timer, task.Key)
 		}
