@@ -15,7 +15,7 @@ type TimeWheel struct {
 	interval   time.Duration // 时间间隔
 	ticker     *time.Ticker
 	size       int          // 槽数量
-	slots      []*list.List // 轮槽 [ [bucket], [bucket],..., [bucket] ]
+	wheel      []*list.List // 轮槽 [ [bucket], [bucket],..., [bucket] ]
 	timer      map[any]int  // 任务池, key:唯一标识 value: 槽 position
 	position   int
 	job        Job // Job 任务回调函数
@@ -36,7 +36,7 @@ func New(interval time.Duration, size int, job Job) *TimeWheel {
 	}
 	tw := &TimeWheel{
 		interval:   interval,
-		slots:      make([]*list.List, size),
+		wheel:      make([]*list.List, size),
 		timer:      make(map[any]int),
 		position:   0,
 		job:        job,
@@ -101,7 +101,7 @@ func (tw *TimeWheel) Remove(taskKey any) bool {
 
 func (tw *TimeWheel) init() {
 	for i := 0; i < tw.size; i++ {
-		tw.slots[i] = list.New()
+		tw.wheel[i] = list.New()
 	}
 }
 
@@ -122,7 +122,7 @@ func (tw *TimeWheel) start() {
 }
 
 func (tw *TimeWheel) tick() {
-	bucket := tw.slots[tw.position]
+	bucket := tw.wheel[tw.position]
 	tw.scan(bucket)
 	if tw.position == tw.size-1 {
 		tw.position = 0
@@ -135,7 +135,7 @@ func (tw *TimeWheel) add(task *Task) {
 	position, round := tw.schedule(task.Delay)
 	task.round = round
 
-	tw.slots[position].PushBack(task)
+	tw.wheel[position].PushBack(task)
 	if task.Key != nil {
 		tw.timer[task.Key] = position
 	}
@@ -143,7 +143,7 @@ func (tw *TimeWheel) add(task *Task) {
 
 func (tw *TimeWheel) remove(taskKey any) {
 	if position, ok := tw.timer[taskKey]; ok {
-		bucket := tw.slots[position]
+		bucket := tw.wheel[position]
 		for element := bucket.Front(); element != nil; {
 			task := element.Value.(*Task)
 			if task.Key == taskKey {
@@ -189,7 +189,9 @@ func (tw *TimeWheel) schedule(delay time.Duration) (position int, round int) {
 	delaySeconds := int(delay.Seconds())
 	intervalSeconds := int(tw.interval.Seconds())
 	round = delaySeconds / intervalSeconds / tw.size
-	position = (tw.position + delaySeconds/intervalSeconds) % tw.size
+
+	mask := tw.size - 1
+	position = (tw.position + delaySeconds/intervalSeconds) & mask
 
 	return
 }
