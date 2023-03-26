@@ -16,8 +16,8 @@ type TimeWheel struct {
 	ticker     *time.Ticker
 	size       int          // 槽数量
 	wheel      []*list.List // 轮槽 [ [bucket], [bucket],..., [bucket] ]
-	timer      map[any]int  // 任务池, key:唯一标识 value: 槽 position
-	position   int
+	timer      map[any]int  // 任务池, key:唯一标识 value: 槽 cursor
+	cursor     int
 	job        Job // Job 任务回调函数
 	addChan    chan Task
 	removeChan chan any
@@ -38,7 +38,7 @@ func New(interval time.Duration, size int, job Job) *TimeWheel {
 		interval:   interval,
 		wheel:      make([]*list.List, size),
 		timer:      make(map[any]int),
-		position:   0,
+		cursor:     0,
 		job:        job,
 		size:       size,
 		addChan:    make(chan Task),
@@ -122,28 +122,28 @@ func (tw *TimeWheel) start() {
 }
 
 func (tw *TimeWheel) tick() {
-	bucket := tw.wheel[tw.position]
+	bucket := tw.wheel[tw.cursor]
 	tw.scan(bucket)
-	if tw.position == tw.size-1 {
-		tw.position = 0
+	if tw.cursor == tw.size-1 {
+		tw.cursor = 0
 	} else {
-		tw.position++
+		tw.cursor++
 	}
 }
 
 func (tw *TimeWheel) add(task *Task) {
-	position, round := tw.schedule(task.Delay)
+	cursor, round := tw.schedule(task.Delay)
 	task.round = round
 
-	tw.wheel[position].PushBack(task)
+	tw.wheel[cursor].PushBack(task)
 	if task.Key != nil {
-		tw.timer[task.Key] = position
+		tw.timer[task.Key] = cursor
 	}
 }
 
 func (tw *TimeWheel) remove(taskKey any) {
-	if position, ok := tw.timer[taskKey]; ok {
-		bucket := tw.wheel[position]
+	if cursor, ok := tw.timer[taskKey]; ok {
+		bucket := tw.wheel[cursor]
 		for element := bucket.Front(); element != nil; {
 			task := element.Value.(*Task)
 			if task.Key == taskKey {
@@ -185,13 +185,13 @@ func (tw *TimeWheel) scan(bucket *list.List) {
 	}
 }
 
-func (tw *TimeWheel) schedule(delay time.Duration) (position int, round int) {
+func (tw *TimeWheel) schedule(delay time.Duration) (cursor int, round int) {
 	delaySeconds := int(delay.Seconds())
 	intervalSeconds := int(tw.interval.Seconds())
 	round = delaySeconds / intervalSeconds / tw.size
 
 	mask := tw.size - 1
-	position = (tw.position + delaySeconds/intervalSeconds) & mask
+	cursor = (tw.cursor + delaySeconds/intervalSeconds) & mask
 
 	return
 }
